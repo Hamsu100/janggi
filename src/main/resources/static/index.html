@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"
+        integrity="sha256-/JqT3SQfawRcv/BIHPThkBvs0OEvtFFmqPF/lYI/Cxo=" crossorigin="anonymous"></script>
+
+    <script type="module">
+        import { v4 as uuidv4 } from 'https://cdn.jsdelivr.net/npm/uuid@9.0.0/dist/esm-browser/index.js';
+        let roomNumber = 'roomroom'
+        let subPath = {
+            test: '/topic/test'
+        }
+        let socket = new WebSocket('ws://localhost:40000/ws');
+        let malLoc = {
+            our: '',
+            enemy: '',
+        }
+        let stomp = Stomp.over(socket);
+        function connectionServer() {
+            stomp.connect({}, frame => {
+                $('#connect').text(frame)
+
+                stomp.subscribe(`/topic/test`, msg => {
+                    $('#connect').text(msg.body)
+                })
+
+                stomp.subscribe(`/topic/messages/${roomNumber}`, msg => {
+                    console.log('messages', msg)
+                    let retObj = JSON.parse(msg.body)
+                    let moveCoordi = operCoordi(retObj)
+                    $(`#${malLoc.enemy.id}`).css({
+                        left: moveCoordi.locX,
+                        top: moveCoordi.locY
+                    })
+                    $(`#${malLoc.enemy.id}`).html(`말!<br>(${retObj.locX}, ${retObj.locY})`)
+                })
+            })
+        }
+        function operCoordi(obj) {
+            // 좌표 이동
+            return {
+                locX: (obj.locX + 4) * 70 - 25,
+                locY: -(obj.locY - 5) * 70 - 25
+            }
+        }
+        function reverseCoordi(obj) {
+            return {
+                x: (obj.locX / 70) - 4,
+                y: (obj.locY / 70) + 5
+            }
+        }
+        function generateMal(teamFlag) {
+
+            malLoc[`${teamFlag ? 'our' : 'enemy'}`] = {
+                locX: teamFlag ? 535 : -25,
+                locY: teamFlag ? 745 : -25,
+                id: `mal${uuidv4()}`
+            }
+            return `<div id="${malLoc[`${teamFlag ? 'our' : 'enemy'}`].id}" style="left:${malLoc[`${teamFlag ? 'our' : 'enemy'}`].locX}px; top:${malLoc[`${teamFlag ? 'our' : 'enemy'}`].locY}px" class="mal ${teamFlag ? 'mal-han' : 'mal-cho'}">말!</div>`
+        }
+
+        function generateJangBoard(domId, teamFlag) {
+            let html = `<div id="${teamFlag ? 'our' : 'enemy'}" class="loc-container">`
+
+            for (let i = 0; i < 11; i++) {
+                html += '<div class="loc-row">'
+                for (let j = 0; j < 8; j++) {
+                    html += '<div class="loc"></div>'
+                }
+                html += '</div>'
+            }
+
+            html += generateMal(teamFlag)
+            html += `<div style="left:${280 - 50}px; top:${350 - 50}px; height:100px; position:absolute; width:100px; color:green; border:1px solid green; display:flex; justify-content:center; align-items:center; background-color: white">중심(0, 0)</div>`
+            html += '</div>'
+            $(`#${domId}`).html(html)
+        }
+
+
+
+        $(document).ready(() => {
+
+            connectionServer();
+
+            let testPublish = setTimeout(() => {
+                stomp.send('/app/test', {})
+
+                clearTimeout(testPublish)
+            }, 1000)
+            generateJangBoard('ourBoard', true)
+            generateJangBoard('enemyBoard', false)
+
+            window.move = () => {
+                let moveCoordi = {
+                    locX: Math.floor(Math.random() * 9) - 4,
+                    locY: Math.floor(Math.random() * 12) - 6
+                }
+                let convertMoveCoordi = operCoordi(moveCoordi)
+                $(`#${malLoc.our.id}`).css({
+                    left: convertMoveCoordi.locX,
+                    top: convertMoveCoordi.locY
+                })
+
+                $(`#${malLoc.our.id}`).html(`말!<br>(${moveCoordi.locX}, ${moveCoordi.locY})`)
+                let sendParam = JSON.stringify({
+                    locX: moveCoordi.locX,
+                    locY: moveCoordi.locY
+                })
+                stomp.send(`/app/sync/${roomNumber}`, {}, sendParam)
+            }
+        })  
+    </script>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        .loc-container {
+            width: 560px;
+            margin: auto;
+            position: relative;
+        }
+
+        .loc-row {
+            display: flex;
+
+        }
+
+        .mal {
+            position: absolute;
+            width: 50px;
+            height: 50px;
+            justify-content: center;
+            align-items: center;
+            display: flex;
+            background-color: white;
+            font-size: 15px;
+            text-align: center;
+        }
+
+        .mal-han {
+            border: 1px solid blue;
+            color: blue
+        }
+
+        .mal-cho {
+            border: 1px solid red;
+            color: red
+        }
+
+        .loc {
+            border: 1px solid black;
+            height: 70px;
+            flex: 1;
+        }
+
+        .separate {
+            margin: 20px;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="connect"></div>
+    <hr />
+    <div class="separate"></div>
+    <div style="display:Flex;width:100%;">
+        <div style="margin: 10px; flex:1;" id="ourBoard"></div>
+        <div style="margin: 10px; flex:1;" id="enemyBoard"></div>
+    </div>
+    <div style="text-align: center;">
+        <button onclick="move()">내꺼 움직이기기</button>
+    </div>
+</body>
+
+</html>
